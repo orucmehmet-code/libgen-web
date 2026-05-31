@@ -1,1 +1,207 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 Libgen Arama</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f13;color:#e0e0e0;min-height:100vh}
+#header{background:#1a1a24;border-bottom:1px solid #2a2a3a;padding:16px 20px;display:flex;align-items:center;gap:12px}
+#header h1{font-size:20px;color:#fff}
+#header span{font-size:12px;color:#888}
+#search-box{padding:20px;background:#141420;border-bottom:1px solid #2a2a3a}
+#search-row{display:flex;gap:8px;margin-bottom:10px}
+#q{flex:1;padding:12px 16px;font-size:16px;border:1px solid #2a2a3a;border-radius:10px;background:#1e1e2e;color:#fff;outline:none}
+#q:focus{border-color:#6c63ff}
+#btn-search{padding:12px 20px;background:#6c63ff;color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;white-space:nowrap}
+#btn-search:hover{background:#5a52e0}
+#filters{display:flex;gap:8px;flex-wrap:wrap}
+select{padding:7px 10px;background:#1e1e2e;color:#ccc;border:1px solid #2a2a3a;border-radius:8px;font-size:13px;outline:none}
+#status{padding:12px 20px;font-size:13px;color:#888;min-height:40px}
+#results{padding:0 20px 20px}
+.book-card{background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;padding:16px;margin-bottom:12px}
+.book-title{font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;line-height:1.4}
+.book-meta{font-size:12px;color:#888;margin-bottom:10px;line-height:1.6}
+.book-meta b{color:#aaa}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.badge{padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-ext{background:#2a3a2a;color:#6dbf6d}
+.badge-size{background:#2a2a3a;color:#8888cc}
+.badge-lang{background:#3a2a2a;color:#cc8888}
+.book-btns{display:flex;gap:8px}
+.btn-dl{padding:8px 16px;background:#2d5a2d;color:#6dbf6d;border:1px solid #3d7a3d;border-radius:8px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-block}
+.btn-dl:hover{background:#3d6a3d}
+.btn-dl.loading{opacity:.6;pointer-events:none}
+#pagination{display:flex;gap:8px;padding:16px 20px;justify-content:center}
+.pg-btn{padding:8px 16px;background:#1e1e2e;border:1px solid #2a2a3a;color:#ccc;border-radius:8px;cursor:pointer;font-size:13px}
+.pg-btn:hover{background:#2a2a3a}
+.pg-btn:disabled{opacity:.4;cursor:not-allowed}
+.empty{text-align:center;padding:40px;color:#555}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #555;border-top-color:#6c63ff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span style="font-size:24px">📚</span>
+  <h1>Library Genesis</h1>
+  <span>Kitap Arama & İndirme</span>
+</div>
+
+<div id="search-box">
+  <div id="search-row">
+    <input id="q" type="text" placeholder="Kitap adı, yazar, ISBN..." onkeydown="if(event.key==='Enter')doSearch()">
+    <button id="btn-search" onclick="doSearch()">Ara</button>
+  </div>
+  <div id="filters">
+    <select id="field">
+      <option value="def">Tümünde ara</option>
+      <option value="title">Başlık</option>
+      <option value="author">Yazar</option>
+      <option value="publisher">Yayınevi</option>
+      <option value="isbn">ISBN</option>
+    </select>
+    <select id="lang">
+      <option value="">Tüm diller</option>
+      <option value="Turkish">Türkçe</option>
+      <option value="English">İngilizce</option>
+      <option value="German">Almanca</option>
+      <option value="French">Fransızca</option>
+    </select>
+    <select id="ext">
+      <option value="">Tüm formatlar</option>
+      <option value="pdf">PDF</option>
+      <option value="epub">EPUB</option>
+      <option value="mobi">MOBI</option>
+      <option value="djvu">DJVU</option>
+    </select>
+  </div>
+</div>
+
+<div id="status"></div>
+<div id="results"></div>
+<div id="pagination" style="display:none">
+  <button class="pg-btn" id="btn-prev" onclick="changePage(-1)">← Önceki</button>
+  <span id="pg-info" style="padding:8px 16px;color:#888;font-size:13px"></span>
+  <button class="pg-btn" id="btn-next" onclick="changePage(1)">Sonraki →</button>
+</div>
+
+<script>
+let currentPage = 1;
+let lastQuery = '';
+let currentBooks = [];
+
+function doSearch(page) {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  lastQuery = q;
+  currentPage = page || 1;
+
+  const field = document.getElementById('field').value;
+  const lang  = document.getElementById('lang').value;
+  const ext   = document.getElementById('ext').value;
+
+  document.getElementById('status').innerHTML = '<span class="spinner"></span>Aranıyor...';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('pagination').style.display = 'none';
+  document.getElementById('btn-search').disabled = true;
+
+  fetch(`/api/search?q=${encodeURIComponent(q)}&field=${field}&lang=${lang}&ext=${ext}&page=${currentPage}`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('btn-search').disabled = false;
+      if (data.error) {
+        document.getElementById('status').textContent = '❌ ' + data.error;
+        return;
+      }
+      currentBooks = data.books || [];
+      document.getElementById('status').textContent =
+        `✓ ${currentBooks.length} sonuç bulundu  (Mirror: ${data.mirror})`;
+
+      if (!currentBooks.length) {
+        document.getElementById('results').innerHTML =
+          '<div class="empty">Sonuç bulunamadı. Farklı bir arama deneyin.</div>';
+        return;
+      }
+
+      renderBooks(currentBooks);
+
+      // Pagination
+      document.getElementById('pagination').style.display = 'flex';
+      document.getElementById('pg-info').textContent = `Sayfa ${currentPage}`;
+      document.getElementById('btn-prev').disabled = currentPage <= 1;
+    })
+    .catch(e => {
+      document.getElementById('btn-search').disabled = false;
+      document.getElementById('status').textContent = '❌ Bağlantı hatası: ' + e.message;
+    });
+}
+
+function renderBooks(books) {
+  const container = document.getElementById('results');
+  container.innerHTML = books.map((b, i) => `
+    <div class="book-card">
+      <div class="book-title">${esc(b.title)}</div>
+      <div class="book-meta">
+        ${b.author ? `<b>Yazar:</b> ${esc(b.author)}<br>` : ''}
+        ${b.year ? `<b>Yıl:</b> ${b.year}  ` : ''}
+        ${b.language ? `<b>Dil:</b> ${b.language}` : ''}
+      </div>
+      <div class="badges">
+        ${b.extension ? `<span class="badge badge-ext">${b.extension.toUpperCase()}</span>` : ''}
+        ${b.size ? `<span class="badge badge-size">${b.size}</span>` : ''}
+        ${b.language ? `<span class="badge badge-lang">${b.language}</span>` : ''}
+      </div>
+      <div class="book-btns">
+        ${b.md5 || b.mirror_links?.length ?
+          `<button class="btn-dl" onclick="downloadBook(${i})">⬇ İndir</button>` :
+          `<span style="font-size:12px;color:#555">Link bulunamadı</span>`
+        }
+      </div>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function downloadBook(i) {
+  const b = currentBooks[i];
+  if (!b) return;
+
+  const params = new URLSearchParams({
+    md5: b.md5 || '',
+    title: b.title || 'kitap',
+    ext: b.extension || 'pdf',
+  });
+  (b.mirror_links || []).forEach(l => params.append('links', l));
+
+  const btn = document.querySelectorAll('.btn-dl')[i];
+  btn.textContent = '⏳ Hazırlanıyor...';
+  btn.classList.add('loading');
+
+  // iframe trick - dosyayı direkt indir
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = `/api/download?${params}`;
+  document.body.appendChild(iframe);
+
+  setTimeout(() => {
+    btn.textContent = '⬇ İndir';
+    btn.classList.remove('loading');
+  }, 5000);
+}
+
+function changePage(dir) {
+  currentPage += dir;
+  if (currentPage < 1) currentPage = 1;
+  doSearch(currentPage);
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>
 
