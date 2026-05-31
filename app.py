@@ -45,8 +45,8 @@ def fmt_size(s):
     except:
         return s
 
-def search_books(mirror, query, field='def', ext='', lang='', page=1):
-    params = {'req': query, 'res': '25', 'page': str(page)}
+def search_books(mirror, query, field='def', ext='', lang='', page=1, res='25'):
+    params = {'req': query, 'res': res, 'page': str(page)}
     field_map = {'title':'t','author':'a','publisher':'s','isbn':'i','def':''}
     col = field_map.get(field, '')
     if col: params['column'] = col
@@ -188,6 +188,7 @@ def api_search():
     ext   = request.args.get('ext','')
     lang  = request.args.get('lang','')
     page  = int(request.args.get('page', 1))
+    res   = request.args.get('res', '25')
 
     if not query:
         return jsonify({'error': 'Arama terimi gerekli'}), 400
@@ -197,7 +198,7 @@ def api_search():
         return jsonify({'error': 'Hiçbir mirror\'a ulaşılamadı'}), 503
 
     try:
-        books = search_books(mirror, query, field, ext, lang, page)
+        books = search_books(mirror, query, field, ext, lang, page, res)
         return jsonify({'books': books, 'mirror': mirror, 'page': page})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
